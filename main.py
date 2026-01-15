@@ -19,7 +19,6 @@ def bureaucratic_sort_optimized(arr, pity_range=(5, 10), batch_size=1000, seed=4
     purged_attempts = deque()
     purged_pity = deque()
 
-    # Phase 1: Purge
     for x in arr:
         if not working or x >= working[-1]:
             working.append(x)
@@ -28,7 +27,6 @@ def bureaucratic_sort_optimized(arr, pity_range=(5, 10), batch_size=1000, seed=4
             purged_attempts.append(0)
             purged_pity.append(random.randint(*pity_range))
 
-    # Phase 2: Bureaucratic reintegration
     while purged_values:
         for _ in range(min(batch_size, len(purged_values))):
             v = purged_values.popleft()
@@ -51,7 +49,6 @@ class BureaucraticSortUI(tk.Tk):
         frame = ttk.Frame(self, padding=10)
         frame.pack(fill="x")
 
-        # Input variables
         self.size_var = tk.IntVar(value=1000)
         self.min_var = tk.IntVar(value=1)
         self.max_var = tk.IntVar(value=100)
@@ -68,11 +65,9 @@ class BureaucraticSortUI(tk.Tk):
         add_row("Pity min:", self.pity_min_var, 3)
         add_row("Pity max:", self.pity_max_var, 4)
 
-        # Buttons
         ttk.Button(frame, text="Run Sort", command=self.run_sort).grid(row=5, column=0, pady=10, sticky="w")
         ttk.Button(frame, text="Clear Output", command=self.clear_output).grid(row=5, column=1, pady=10, sticky="w")
 
-        # Output area
         self.output = tk.Text(self, wrap="word", height=20)
         self.output.pack(fill="both", expand=True, padx=10, pady=10)
 

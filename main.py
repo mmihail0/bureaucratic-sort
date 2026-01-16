@@ -1,82 +1,163 @@
-import time
+import tkinter as tk
+from tkinter import ttk, messagebox
 import random
+import time
 import bisect
 from collections import deque
 from array import array
+import threading
+import queue
 
-def chaotic_bureaucratic_sort_optimized(arr, pity_range=(5,10), batch_size=1000, verbose=True, seed=42):
-    """
-    Optimized Chaotic Bureaucratic Sort for very large arrays.
-    - Stalin purge removes numbers violating order
-    - Purged numbers stored in deque for O(1) pop/append
-    - Reintegration uses bisect.insort for log(n) insertion
-    - Batch processing reduces overhead for massive arrays
-    """
+
+# ------------------- SORT ALGORITHM -------------------
+def bureaucratic_sort_optimized(
+    arr,
+    pity_range=(5, 10),
+    batch_size=1000,
+    seed=42,
+    progress_queue=None
+):
     if seed is not None:
         random.seed(seed)
-    start_time = time.time()
 
-    # Phase 1: Stalin purge
+    start_time = time.time()
+    last_report = start_time
+    REPORT_INTERVAL = 1.0
+
     working = array('i')
     purged_values = deque()
-    purged_attempts = deque()
-    purged_pity = deque()
 
     for x in arr:
         if not working or x >= working[-1]:
             working.append(x)
         else:
             purged_values.append(x)
-            purged_attempts.append(0)
-            purged_pity.append(random.randint(*pity_range))
 
-    passes = 0
+        now = time.time()
+        if progress_queue and now - last_report >= REPORT_INTERVAL:
+            progress_queue.put(("progress", len(working), len(purged_values)))
+            last_report = now
 
     while purged_values:
-        passes += 1
-
-        # Batch processing: pop multiple purged values at once
         for _ in range(min(batch_size, len(purged_values))):
             v = purged_values.popleft()
-            attempts = purged_attempts.popleft() + 1
-            pity = purged_pity.popleft()
-
-            # Binary search insertion
             bisect.insort_right(working, v)
 
-        # Progress printing
-        if verbose and passes % 100 == 0:
-            print(f"passes={passes} | working={len(working)} | queued={len(purged_values)} | time={time.time()-start_time:.2f}s")
+        now = time.time()
+        if progress_queue and now - last_report >= REPORT_INTERVAL:
+            progress_queue.put(("progress", len(working), len(purged_values)))
+            last_report = now
 
-    total_time = time.time() - start_time
-    if verbose:
-        print(f"\nFinal sorted array sample (first 100 elements): {working[:100]} ...")
-        print(f"Total passes: {passes}")
-        print(f"Total time: {total_time:.4f}s")
+    elapsed = time.time() - start_time
+    return list(working), elapsed
 
-    return working
 
-# ------------------- Main Program -------------------
+# ------------------- TKINTER UI -------------------
+class BureaucraticSortUI(tk.Tk):
+    def __init__(self):
+        super().__init__()
+
+        self.title("Bureaucratic Sort")
+        self.geometry("800x600")
+
+        self.progress_queue = queue.Queue()
+        self.create_widgets()
+        self.last_status = ""
+        
+        self.poll_queue()
+
+    def create_widgets(self):
+        frame = ttk.Frame(self, padding=10)
+        frame.pack(fill="x")
+
+        self.size_var = tk.IntVar(value=1000)
+        self.min_var = tk.IntVar(value=1)
+        self.max_var = tk.IntVar(value=100)
+        self.pity_min_var = tk.IntVar(value=5)
+        self.pity_max_var = tk.IntVar(value=10)
+
+        def add_row(label, var, row):
+            ttk.Label(frame, text=label).grid(row=row, column=0, sticky="w")
+            ttk.Entry(frame, textvariable=var, width=10).grid(row=row, column=1, sticky="w")
+
+        add_row("Array size:", self.size_var, 0)
+        add_row("Minimum value:", self.min_var, 1)
+        add_row("Maximum value:", self.max_var, 2)
+        add_row("Pity min:", self.pity_min_var, 3)
+        add_row("Pity max:", self.pity_max_var, 4)
+
+        ttk.Button(frame, text="Run Sort", command=self.start_sort_thread).grid(row=5, column=0, pady=10, sticky="w")
+        ttk.Button(frame, text="Clear Output", command=self.clear_output).grid(row=5, column=1, pady=10, sticky="w")
+
+        self.output = tk.Text(self, wrap="word", height=20)
+        self.output.pack(fill="both", expand=True, padx=10, pady=10)
+
+    # ---------------- THREADING ----------------
+    def start_sort_thread(self):
+        try:
+            size = self.size_var.get()
+            min_val = self.min_var.get()
+            max_val = self.max_var.get()
+
+            if size <= 0:
+                raise ValueError("Array size must be positive.")
+
+            self.output.insert(tk.END, "Starting Bureaucratic Sort...\n\n")
+            self.output.see(tk.END)
+
+            data = [random.randint(min_val, max_val) for _ in range(size)]
+
+            thread = threading.Thread(
+                target=self.run_sort,
+                args=(data,),
+                daemon=True
+            )
+            thread.start()
+
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+
+    def run_sort(self, data):
+        sorted_data, elapsed = bureaucratic_sort_optimized(
+            data,
+            pity_range=(self.pity_min_var.get(), self.pity_max_var.get()),
+            progress_queue=self.progress_queue
+        )
+        self.progress_queue.put(("done", sorted_data, elapsed))
+
+    # ---------------- QUEUE POLLING ----------------
+    def poll_queue(self):
+        try:
+            while True:
+                msg = self.progress_queue.get_nowait()
+
+                if msg[0] == "progress":
+                    _, working_count, purged_count = msg
+                    self.last_status = f"Working count: {working_count} | Purged count: {purged_count}"
+
+                elif msg[0] == "done":
+                    _, sorted_data, elapsed = msg
+                    self.output.insert(tk.END, "\nSort complete.\n")
+                    self.output.insert(tk.END, f"Sorted sample (first 50):\n{sorted_data[:50]}\n")
+                    self.output.insert(tk.END, f"Time taken: {elapsed:.4f}s\n\n")
+                    self.output.see(tk.END)
+                    self.last_status = ""
+
+        except queue.Empty:
+            pass
+
+        if self.last_status:
+            self.output.insert(tk.END, self.last_status + "\n")
+            self.output.see(tk.END)
+            self.last_status = ""
+
+        self.after(200, self.poll_queue)  # check the queue every 0.2s
+
+    def clear_output(self):
+        self.output.delete("1.0", tk.END)
+
+
+# ------------------- RUN APP -------------------
 if __name__ == "__main__":
-    print("=== Chaotic Bureaucratic Sort (Optimized for Large Arrays) ===\n")
-
-    # User input
-    size = int(input("Enter the size of the array (e.g., 1000000): "))
-    min_val = int(input("Enter minimum number (e.g., 1): "))
-    max_val = int(input("Enter maximum number (e.g., 100): "))
-    print("Pity threshold determines how many failed reintegration attempts a number can have before it is forcibly inserted.")
-    pity_min = int(input("Enter minimum pity threshold (e.g., 5): "))
-    pity_max = int(input("Enter maximum pity threshold (e.g., 10): "))
-
-    # Generate random array
-    data = [random.randint(min_val, max_val) for _ in range(size)]
-    print("\nOriginal array sample (first 100):", data[:100])
-
-    # Run sort
-    sorted_data = chaotic_bureaucratic_sort_optimized(
-        data,
-        pity_range=(pity_min, pity_max),
-        batch_size=1000,
-        verbose=True,
-        seed=42
-    )
+    app = BureaucraticSortUI()
+    app.mainloop()

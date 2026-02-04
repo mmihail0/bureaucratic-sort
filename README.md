@@ -1,2 +1,3 @@
 # bureaucratic-sort
-sorting algorithm with the characteristics that one might encounter in a bureaucratic system in real life
+sorting algorithm that aims to be as inefficient yet as fast as possible
+passion project out of boredom

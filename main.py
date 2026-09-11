@@ -9,9 +9,9 @@ import threading
 import queue
 
 
-# ============================================================
+
 #     BUREAUCRATIC MINISTRY SORT AS OF VERSION 0.3-ALPHA
-# ============================================================
+
 
 def bureaucratic_sort_optimized(
     arr,
